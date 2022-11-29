@@ -22,20 +22,25 @@ def report_attributes(data):
         print(data_col_series)
 
 
-df_covid_confirmed = load_data(COVID_CONFIRMED)
+def main():
+    df_covid_confirmed = load_data(COVID_CONFIRMED)
 
-g = df_covid_confirmed.groupby("Country/Region")
+    g = df_covid_confirmed.groupby("Country/Region")
 
-for country, country_df in g:
-    print(country)
-    print(country_df)
+    for country, country_df in g:
+        print(country)
+        print(country_df)
 
-    #Get average latitude for each country
-    print(country_df.loc[:, "Lat"].mean())
+        # Get average latitude for each country
+        print(country_df.loc[:, "Lat"].mean())
 
-    # Get average longtitude for each country
-    print(country_df.loc[:, "Long"].mean())
+        # Get average longtitude for each country
+        print(country_df.loc[:, "Long"].mean())
 
-    #Sum total cases
-    country_total=country_df.iloc[:len(country_df.index)].sum(axis=1, skipna=True, numeric_only=True)
-    print(country_total.values)
+        # Sum total cases
+        country_total = country_df.iloc[:len(country_df.index)].sum(axis=1, skipna=True, numeric_only=True)
+        print(country_total.values)
+
+
+if __name__ == '__main__':
+    main()
