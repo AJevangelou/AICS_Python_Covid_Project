@@ -17,7 +17,6 @@ COVID_PATH = os.path.join("datasets", "covid")
 COVID_CONFIRMED = os.path.join("confirmed.csv")
 COVID_DEATHS = os.path.join("deaths.csv")
 COVID_RECOVERED = os.path.join("recovered.csv")
-COUNTRIES = []
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -43,7 +42,7 @@ def report_date(dataframe):
     print("The complete time span for the data is from: " + index[2] + " to: " + index[-1])
 
 
-# Update dataframe by Country
+# Update dataframe by Country and return mean Longitude and Latitude for each country
 def updateDF(dataframe: DataFrame, groupedBy):
     meanLatitude = []
     meanLongitude = []
@@ -61,36 +60,7 @@ def updateDF(dataframe: DataFrame, groupedBy):
     return updatedDF
 
 
-# Plot to world map
-def plotToMap(dataFrame, typeOfData, date, divisionConstant):
-    # df_geo = dataFrame.GeoDataFrame(dataFrame, geometry=geopandas.points_from_xy(dataFrame["Lat"], dataFrame["Long"]))
-
-    # From GeoPandas, our world map data
-    worldmap = geopandas.read_file(geopandas.datasets.get_path("naturalearth_lowres"))
-    # Creating axes and plotting world map
-    fig, ax = plt.subplots(figsize=(12, 6))
-    worldmap.plot(color="lightgrey", ax=ax)
-
-    plt.title("COVID-19 {} on {} \n".format(typeOfData, date))
-    plt.xlabel("Longitude")
-    plt.ylabel("Latitude")
-    # Creating axis limits and title
-    plt.xlim([-180, 180])
-    plt.ylim([-90, 90])
-
-    # Get sizes for the figure
-    size = dataFrame[date].div(divisionConstant)
-
-    plt.scatter(dataFrame["Long"], dataFrame["Lat"], c=size, s=size, cmap='plasma', edgecolors="black")
-    cbar = plt.colorbar()
-    cbar.set_label("Number of {} \n (Representation is divided by {})".format(typeOfData, divisionConstant))
-    plt.tight_layout()
-    plt.grid()
-    plt.show()
-
-
 def plotToMapThreshold(dataFrame, typeOfData, date, divisionConstant, threshold, description):
-    # df_geo = dataFrame.GeoDataFrame(dataFrame, geometry=geopandas.points_from_xy(dataFrame["Lat"], dataFrame["Long"]))
 
     # From GeoPandas, our world map data
     worldmap = geopandas.read_file(geopandas.datasets.get_path("naturalearth_lowres"))
@@ -98,10 +68,12 @@ def plotToMapThreshold(dataFrame, typeOfData, date, divisionConstant, threshold,
     fig, ax = plt.subplots(figsize=(12, 6))
     worldmap.plot(color="lightgrey", ax=ax)
 
+    # Create title, xLabel, yLabel, set x and y axis limits
     plt.title("COVID-19 {} on {} \nCountries with 100+ cases are represented with red".format(typeOfData, date))
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
-    # Creating axis limits and title
+
+    # Creating axis limits
     plt.xlim([-180, 180])
     plt.ylim([-90, 90])
 
@@ -109,7 +81,6 @@ def plotToMapThreshold(dataFrame, typeOfData, date, divisionConstant, threshold,
     lessData = dataFrame.drop(dataFrame.index[dataFrame[date] < threshold])
 
     dataFrame.reset_index()
-    # Get sizes for the figure
 
     # Filter (drop) the countries with less than 100 cases
     dataFrame = dataFrame.drop(dataFrame.index[dataFrame[date] >= threshold])
@@ -123,6 +94,7 @@ def plotToMapThreshold(dataFrame, typeOfData, date, divisionConstant, threshold,
     plt.scatter(dataFrame["Long"], dataFrame["Lat"], s=size, color='blue', edgecolors="black", alpha=0.5)
     plt.scatter(lessData["Long"], lessData["Lat"], s=lessSize, color='red', edgecolors="black", alpha=0.5)
 
+    # Adding tight layout and grid
     plt.tight_layout()
     plt.grid()
 
@@ -202,15 +174,13 @@ def createGif():
                    save_all=True,
                    duration=300, loop=0)
 
-
+# Create histogram for the top 10 Countries
 def createHistogram(dataFrame, countries_array, description):
     # Get all dates from pandas
     list_of_dates = dataFrame.columns.values.tolist()[2:]
 
     len_of_dates = len(list_of_dates)
 
-    # print(dataFrame.loc[countries_array[0]][2:].values)
-    countries_data = {}
     new_cases = [[], [], [], [], [], [], [], [], [], []]
     for i in range(0, len(countries_array)):
         list_of_values = dataFrame.loc[countries_array[i]][2:].values
@@ -224,13 +194,14 @@ def createHistogram(dataFrame, countries_array, description):
             else:
                 new_cases[i].append(x)
 
+    # Create figures and axis for the plots
     fig, axes = plt.subplots(3, 4, figsize=(12, 8))
     plt.subplots_adjust(hspace=0.5)
     fig.suptitle("COVID-19 {} - Top 10 Country/Region".format(description))
     fig.supxlabel("As of 29-May-2021")
     fig.supylabel("New Cases")
 
-    #Iterate through top 10 countries and add sublplots to figures
+    #Iterate through top 10 countries and add subplots to figures
     index = 0
     while index < 10:
         for row in range(0, 3):
@@ -244,9 +215,11 @@ def createHistogram(dataFrame, countries_array, description):
                     axes[row, column].xaxis.set_ticklabels(["Jan 20", "Jul 20", "Jan 21", "Jul 21"])
                     index += 1
 
+    # Delete the figures which are not used
     fig.delaxes(axes[2][2])
     fig.delaxes(axes[2][3])
 
+    # Display figures
     plt.tight_layout()
     plt.show()
 
@@ -270,15 +243,15 @@ def main():
     report_countries(updated_confirmed, "Country/Region")
     report_date(updated_confirmed)
 
-    # Plotting confirmed cases with threshold
+    # Plotting confirmed cases with threshold of 100 cases and dividing to make them easier to view
     plotToMapThreshold(updated_confirmed, "Confirmed Cases", "1/22/20", 1, 100, "2")
     plotToMapThreshold(updated_confirmed, "Confirmed Cases", "5/29/21", 100000, 100, "1")
 
-    # Plotting recovered
+    # Plotting recovered cases with threshold of 100 cases and dividing to make them easier to view
     plotToMapThreshold(updated_recovered, "Recovered", "1/22/20", 1, 100, "2")
     plotToMapThreshold(updated_recovered, "Recovered", "5/29/21", 10000, 100, "1")
 
-    # Plotting Deaths
+    # Plotting Deaths cases with threshold of 100 cases and dividing to make them easier to view
     plotToMapThreshold(updated_deaths, "Deaths", "1/22/20", 1, 100, "2")
     plotToMapThreshold(updated_deaths, "Deaths", "5/29/21", 1000, 100, "1")
 
