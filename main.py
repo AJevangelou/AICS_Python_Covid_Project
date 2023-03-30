@@ -1,13 +1,14 @@
-import math
-import os
-
+import numpy as np
 import pandas as pd
 from pandas import DataFrame
-import matplotlib as mpl
 import geopandas
 import matplotlib.pyplot as plt
 from PIL import Image
 import glob
+import datetime as dt
+import matplotlib.dates as mdates
+import os
+
 
 # -----------------------------------------------------------------------------------------------------------
 #                                        GLOBAL VARIABLES DEFINITION
@@ -39,7 +40,8 @@ def report_countries(dataframe, groupedBy):
 # Report the time span of the data
 def report_date(dataframe):
     index = dataframe.columns
-    print("The complete time span for the data is from: " + index[2] + " to: " + index[-1])
+    print("The complete time span for the data is from: "
+          + index[2] + " to: " + index[-1])
 
 
 # Update dataframe by Country and return mean Longitude and Latitude for each country
@@ -60,8 +62,7 @@ def updateDF(dataframe: DataFrame, groupedBy):
     return updatedDF
 
 
-def plotToMapThreshold(dataFrame, typeOfData, date, divisionConstant, threshold, description):
-
+def plotToMapThreshold(dataFrame, typeOfData, date, divisionConstant, threshold, description, show):
     # From GeoPandas, our world map data
     worldmap = geopandas.read_file(geopandas.datasets.get_path("naturalearth_lowres"))
     # Creating axes and plotting world map
@@ -101,10 +102,14 @@ def plotToMapThreshold(dataFrame, typeOfData, date, divisionConstant, threshold,
     # Saving the figure
     path = os.path.join("./datasets/figures/", typeOfData.replace(" ", ""))
     os.makedirs(path, exist_ok=True)
-    plt.savefig("./datasets/figures/{}/".format(typeOfData.replace(" ", "")) + typeOfData + description)
+    plt.savefig("./datasets/figures/{}/".format(typeOfData.replace(" ", "")) + typeOfData + str(description))
 
     # Displaying figure
-    plt.show()
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
 
 
 # Get total cases
@@ -155,24 +160,52 @@ def topCases(dataframe, typeOfdata, description):
 
     # Show Plot
     plt.show()
+
     createHistogram(dataframe, COUNTRIES, description)
 
+    if description == 'Confirmed Cases':
+        findWaves(dataframe, COUNTRIES)
 
-# Create a gif from saved figures
-def createGif():
-    # Build GIF
-    # Create the frames
+
+
+
+
+def createGif(description):
+    # Get the list of PNG files to include in the GIF
+    path = "./datasets/figures/{}/".format(description.replace(" ", ""))
+    file_list = os.listdir(path)
+
+    # Sort the file names by the modification time
+    file_list = sorted(file_list, key=lambda x: os.path.getmtime(os.path.join(path, x)))
+
+    # Create the GIF frames
     frames = []
-    imgs = glob.glob("./datasets/figures/*.png")
-    for i in imgs:
-        new_frame = Image.open(i)
-        frames.append(new_frame)
+    for file in file_list:
+        img = Image.open(os.path.join(path, file))
+        # Optimize the frame
+        optimized_frame = optimize_frame(img)
+        frames.append(optimized_frame)
 
-    # Save the png images into a GIF file that loops forever
-    frames[0].save('png_to_gif.gif', format='GIF',
-                   append_images=frames[1:],
-                   save_all=True,
-                   duration=300, loop=0)
+    # Save the GIF
+    save_gif(frames, description)
+
+
+def optimize_frame(frame):
+    # Convert the frame to a palette-based image with 256 colors
+    frame = frame.convert('P', palette=Image.ADAPTIVE, colors=256)
+    # Quantize the color palette to reduce the number of colors
+    frame = frame.quantize(method=2, kmeans=4, dither=Image.NONE, palette=None)
+    return frame
+
+def save_gif(frames, description):
+    # Save the PNG images as a GIF file that loops forever
+    path = os.path.join("./datasets/figures/", description.replace(" ", ""))
+    os.makedirs(path, exist_ok=True)
+    save_path = os.path.join(path, "{}.gif".format(description.replace(" ", "")))
+    frames[0].save(save_path, format='GIF', append_images=frames[1:],
+                   save_all=True, duration=200, loop=0, optimize=True, disposal=2)
+
+
 
 # Create histogram for the top 10 Countries
 def createHistogram(dataFrame, countries_array, description):
@@ -184,7 +217,6 @@ def createHistogram(dataFrame, countries_array, description):
     new_cases = [[], [], [], [], [], [], [], [], [], []]
     for i in range(0, len(countries_array)):
         list_of_values = dataFrame.loc[countries_array[i]][2:].values
-        print(countries_array[i])
 
         new_cases[i].append(list_of_values[0])
         for j in range(1, len(list_of_values)):
@@ -201,7 +233,7 @@ def createHistogram(dataFrame, countries_array, description):
     fig.supxlabel("As of 29-May-2021")
     fig.supylabel("New Cases")
 
-    #Iterate through top 10 countries and add subplots to figures
+    # Iterate through top 10 countries and add subplots to figures
     index = 0
     while index < 10:
         for row in range(0, 3):
@@ -209,9 +241,10 @@ def createHistogram(dataFrame, countries_array, description):
                 if index >= 10:
                     break
                 else:
-                    axes[row, column].plot(list_of_dates, new_cases[index])
+                    axes[row, column].plot(list_of_dates, new_cases[index], linewidth='0.8')
                     axes[row, column].set_title(countries_array[index])
-                    axes[row, column].set_xticks([0, int(len_of_dates / 3), int(2*len_of_dates/3), int(len_of_dates)])
+                    axes[row, column].set_xticks(
+                        [0, int(len_of_dates / 3), int(2 * len_of_dates / 3), int(len_of_dates)])
                     axes[row, column].xaxis.set_ticklabels(["Jan 20", "Jul 20", "Jan 21", "Jul 21"])
                     index += 1
 
@@ -221,6 +254,78 @@ def createHistogram(dataFrame, countries_array, description):
 
     # Display figures
     plt.tight_layout()
+    plt.show()
+
+
+def findWaves(dataFrame, countries_array):
+    list_of_dates = dataFrame.columns.values.tolist()[2:]
+    list_of_values = dataFrame.loc[countries_array[0]][2:].values
+    waves = []
+    wave_start_numeric = None
+    wave_end_numeric = None
+    wave_start = None
+    wave_end = None
+    dates = []
+
+    new_cases = []
+    list_of_values = dataFrame.loc[countries_array[9]][2:].values
+
+    new_cases.append(list_of_values[0])
+    for j in range(1, len(list_of_values)):
+        x = list_of_values[j] - list_of_values[j - 1]
+        if x < 0:
+            new_cases.append(0)
+        else:
+            new_cases.append(x)
+
+    s = pd.Series(new_cases).rolling(30).mean()
+    mean = s.mean()
+    new_cases = s.to_list()
+
+    for i in range(1, len(list_of_values)):
+        if new_cases[i] >= new_cases[i - 1]*1.085:
+            if wave_start is None:
+                wave_start = list_of_dates[i]
+                wave_start_numeric = i
+
+        elif new_cases[i] < new_cases[i - 1] and new_cases[i] < mean and wave_start is not None:
+            if i < len(list_of_values)-1 and new_cases[i] < new_cases[i+1]:
+                print('local minima')
+                wave_end_numeric = i
+
+                # check if the wave is longer than 7 days
+                if wave_end_numeric - wave_start_numeric > 30:
+                    wave_end = list_of_dates[i]
+
+                    waves.append([wave_start, wave_end])
+                    dates.append(wave_start)
+                    dates.append(wave_end)
+                    wave_end = None
+                    wave_start = None
+                    wave_start_numeric = None
+                    wave_end_numeric = None
+                else:
+                    wave_end = None
+                # wave_start = None
+                # wave_start_numeric = None
+                    wave_end_numeric = None
+
+    print(dates)
+    print(waves)
+    x = [dt.datetime.strptime(d, '%m/%d/%y').date() for d in list_of_dates]
+
+    # Create figure and plot space
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlabel('Date')
+    ax.set_title('Covid confirmed cases each day')
+    date_form = mdates.DateFormatter('%m/%d/%y')
+    ax.xaxis.set_major_formatter(date_form)
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+    plt.tight_layout()
+    plt.plot(x, new_cases)
+    for date in dates:
+        date_object = dt.datetime.strptime(date, '%m/%d/%y').date()
+        ax.axvline(date_object, color='red', linestyle='--')
     plt.show()
 
 def main():
@@ -244,16 +349,40 @@ def main():
     report_date(updated_confirmed)
 
     # Plotting confirmed cases with threshold of 100 cases and dividing to make them easier to view
-    plotToMapThreshold(updated_confirmed, "Confirmed Cases", "1/22/20", 1, 100, "2")
-    plotToMapThreshold(updated_confirmed, "Confirmed Cases", "5/29/21", 100000, 100, "1")
+    plotToMapThreshold(updated_confirmed, "Confirmed Cases", "1/22/20", 1, 100, "2", True)
+    plotToMapThreshold(updated_confirmed, "Confirmed Cases", "5/29/21", 100000, 100, "1", True)
+
+    count = 0
+    for date in updated_confirmed.columns.values.tolist()[2:]:
+        plotToMapThreshold(updated_confirmed, "Confirmed Cases", date, 100000, 100, count, False)
+        print(count)
+        count += 1
+
+    # Create an animated GIF with
+    createGif("Confirmed Cases")
 
     # Plotting recovered cases with threshold of 100 cases and dividing to make them easier to view
-    plotToMapThreshold(updated_recovered, "Recovered", "1/22/20", 1, 100, "2")
-    plotToMapThreshold(updated_recovered, "Recovered", "5/29/21", 10000, 100, "1")
+    plotToMapThreshold(updated_recovered, "Recovered", "1/22/20", 1, 100, "2", True)
+    plotToMapThreshold(updated_recovered, "Recovered", "5/29/21", 10000, 100, "1", True)
+    count = 0
+    for date in updated_recovered.columns.values.tolist()[2:]:
+        plotToMapThreshold(updated_recovered, "Recovered", date, 1000, 100, count, False)
+        print(count)
+        count += 1
+
+    # Create an animated GIF with
+    createGif("Recovered")
 
     # Plotting Deaths cases with threshold of 100 cases and dividing to make them easier to view
-    plotToMapThreshold(updated_deaths, "Deaths", "1/22/20", 1, 100, "2")
-    plotToMapThreshold(updated_deaths, "Deaths", "5/29/21", 1000, 100, "1")
+    plotToMapThreshold(updated_deaths, "Deaths", "1/22/20", 1, 100, "2", True)
+    plotToMapThreshold(updated_deaths, "Deaths", "5/29/21", 1000, 100, "1", True)
+    count = 0
+    for date in updated_deaths.columns.values.tolist()[2:]:
+        plotToMapThreshold(updated_deaths, "Deaths", date, 1000, 100, count, False)
+        print(count)
+        count += 1
+    # Create an animated GIF with
+    createGif("Deaths")
 
     # Get top 10 countries by total cases
     topCases(updated_confirmed, "5/29/21", "Confirmed Cases")
@@ -261,9 +390,6 @@ def main():
     topCases(updated_recovered, "5/29/21", "Recovered Cases")
     # Get top 10 countries for deaths
     topCases(updated_deaths, "5/29/21", "Deaths")
-
-    # Create an animated GIF with
-    createGif()
 
 
 if __name__ == "__main__":
